@@ -1,6 +1,9 @@
+import findspark
+findspark.init()
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import StructType, StringType, IntegerType, FloatType, DoubleType
+from pyspark.sql.types import StructType, StringType, IntegerType, FloatType
 
 # Membuat sesi Spark dengan konektor Kafka
 spark = SparkSession.builder \
@@ -60,13 +63,12 @@ loan_df = loan_data \
     .select("data.*")
 
 # Menyimpan data ke CSV dalam batch
-# Konfigurasi trigger untuk menyimpan setiap sejumlah waktu (misalnya setiap 10 detik)
 query = loan_df \
     .writeStream \
     .outputMode("append") \
     .format("csv") \
-    .option("path", "output\loan_batch") \
-    .option("checkpointLocation", "output\checkpoint") \
+    .option("path", "output/loan_batch") \
+    .option("checkpointLocation", "output/checkpoint") \
     .trigger(processingTime="10 seconds") \
     .start()
 
