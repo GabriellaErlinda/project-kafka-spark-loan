@@ -1,75 +1,56 @@
-import findspark
-findspark.init()
+from confluent_kafka import Consumer
+import json
+import pandas as pd
+from datetime import datetime, timedelta
 
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import StructType, StringType, IntegerType, FloatType
+# Initialize Kafka Consumer with configuration dictionary
+consumer = Consumer({
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'my-consumer-group',
+    'auto.offset.reset': 'earliest'
+})
 
-# Membuat sesi Spark dengan konektor Kafka
-spark = SparkSession.builder \
-    .appName("LoanDataProcessor") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0") \
-    .getOrCreate()
+# Subscribe to the topic
+consumer.subscribe(['LoanSpark'])
 
-# Mengonfigurasi Kafka stream
-loan_data = spark \
-    .readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "localhost:9092") \
-    .option("subscribe", "streaming-data") \
-    .load()
+# Batch and processing parameters
+batch = []
+batch_size = 1000  # Define your batch size
+time_window = timedelta(minutes=5)
+start_time = datetime.now()
+batch_count = 0  # Counter to limit to 3 batches
+max_batches = 3  # Limit to 3 batches
 
-# Mendefinisikan skema data loan sesuai dengan struktur kolom dalam CSV
-schema = StructType() \
-    .add("ID", StringType()) \
-    .add("year", IntegerType()) \
-    .add("loan_limit", FloatType()) \
-    .add("Gender", StringType()) \
-    .add("approv_in_adv", StringType()) \
-    .add("loan_type", StringType()) \
-    .add("loan_purpose", StringType()) \
-    .add("Credit_Worthiness", StringType()) \
-    .add("open_credit", FloatType()) \
-    .add("business_or_commercial", StringType()) \
-    .add("loan_amount", FloatType()) \
-    .add("rate_of_interest", FloatType()) \
-    .add("Interest_rate_spread", FloatType()) \
-    .add("Upfront_charges", FloatType()) \
-    .add("term", IntegerType()) \
-    .add("Neg_ammortization", StringType()) \
-    .add("interest_only", StringType()) \
-    .add("lump_sum_payment", StringType()) \
-    .add("property_value", FloatType()) \
-    .add("construction_type", StringType()) \
-    .add("occupancy_type", StringType()) \
-    .add("Secured_by", StringType()) \
-    .add("total_units", IntegerType()) \
-    .add("income", FloatType()) \
-    .add("credit_type", StringType()) \
-    .add("Credit_Score", IntegerType()) \
-    .add("co-applicant_credit_type", StringType()) \
-    .add("age", IntegerType()) \
-    .add("submission_of_application", StringType()) \
-    .add("LTV", FloatType()) \
-    .add("Region", StringType()) \
-    .add("Security_Type", StringType()) \
-    .add("Status", StringType()) \
-    .add("dtir1", FloatType())
+# Directory to save CSV files
+save_directory = 'D:/SEMS-5/BIG DATA/Project2/project-kafka-spark-loan/output/loan_batch'
 
-# Mengonversi nilai dari Kafka (format biner) ke JSON dan parsing sesuai skema
-loan_df = loan_data \
-    .selectExpr("CAST(value AS STRING) as json") \
-    .select(from_json(col("json"), schema).alias("data")) \
-    .select("data.*")
+while True:
+    message = consumer.poll(0.1)  # Poll with a timeout of 1 second
 
-# Menyimpan data ke CSV dalam batch
-query = loan_df \
-    .writeStream \
-    .outputMode("append") \
-    .format("csv") \
-    .option("path", "output/loan_batch") \
-    .option("checkpointLocation", "output/checkpoint") \
-    .trigger(processingTime="10 seconds") \
-    .start()
+    if message is None:
+        continue
+    if message.error():
+        print(f"Consumer error: {message.error()}")
+        continue
 
-query.awaitTermination()
+    # Deserialize and add message to batch
+    batch.append(json.loads(message.value().decode('utf-8')))
+
+    # Check if batch meets size or time window criteria
+    if len(batch) >= batch_size or (datetime.now() - start_time) >= time_window:
+        # Save batch as a CSV file
+        df = pd.DataFrame(batch)
+        df.to_csv(f'{save_directory}/batch_{batch_count+1}_{datetime.now().strftime("%Y%m%d%H%M%S")}.csv', index=False)
+        
+        # Clear batch and reset time
+        batch = []
+        start_time = datetime.now()
+        
+        # Increment batch count and check limit
+        batch_count += 1
+        if batch_count >= max_batches:
+            print("Processed 3 batches. Stopping consumer.")
+            break
+
+# Close the consumer
+consumer.close()

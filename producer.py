@@ -1,35 +1,35 @@
 import time
-import csv
-import json
 import random
 from confluent_kafka import Producer
+import json
+import pandas as pd
 
-# Fungsi callback untuk menangani pengiriman pesan
+# Configure Confluent Kafka Producer
+conf = {'bootstrap.servers': 'localhost:9092'}
+producer = Producer(**conf)
+
+# Load dataset
+data = pd.read_csv(r'D:\SEMS-5\BIG DATA\Project2\project-kafka-spark-loan\loan_data.csv')
+
+# Delivery report handler
 def delivery_report(err, msg):
     if err is not None:
-        print(f"Pesan gagal dikirim: {err}")
+        print(f"Message delivery failed: {err}")
     else:
-        print(f"Pesan terkirim ke {msg.topic()} [{msg.partition()}]")
+        print(f"Message delivered to {msg.topic()} [{msg.partition()}]")
 
-# Inisialisasi Kafka Producer dengan konfigurasi
-conf = {
-    'bootstrap.servers': 'localhost:9092',  # Alamat Kafka server
-}
+# Stream data row-by-row
+for index, row in data.iterrows():
+    message = row.to_dict()
+    # Send message to 'LoanSpark' topic
+    producer.produce(
+        'LoanSpark',
+        value=json.dumps(message),
+        callback=delivery_report
+    )
+    producer.poll(0)  # Ensures delivery report callbacks are handled
+    print(f'Sent: {message}')
+    time.sleep(random.uniform(0.01, 0.03))  # Random delay
 
-producer = Producer(conf)
-
-# Baca file CSV dan kirim data per baris dengan jeda acak
-file_path = 'loan_data.csv'
-
-with open(file_path, mode='r') as file:
-    csv_reader = csv.DictReader(file)  # Membaca CSV sebagai dictionary per baris
-    for row in csv_reader:
-        message = json.dumps(row).encode('utf-8')  # Ubah setiap baris menjadi JSON dan encode
-        producer.produce('streaming-data', value=message, callback=delivery_report)
-        print(f"Sent: {message}")
-
-        # Jeda acak antara 1 hingga 5 detik
-        time.sleep(random.randint(1, 5))
-
-# Menunggu semua pesan yang belum terkirim untuk diproses
+# Wait for any outstanding messages to be delivered
 producer.flush()

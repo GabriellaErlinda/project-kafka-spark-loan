@@ -1,75 +1,62 @@
-import os
 from pyspark.sql import SparkSession
-from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml.feature import VectorAssembler
-from pyspark.ml import Pipeline
+from pyspark.ml.classification import RandomForestClassifier
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+import os
+import syspath
 
-# Inisialisasi sesi Spark
-spark = SparkSession.builder.appName("LoanModelTrainer").getOrCreate()
+# Inisialisasi Spark Session
+spark = SparkSession.builder.appName("Model Training").getOrCreate()
 
-# Menyiapkan jalur data batch output dari consumer
-data_dir = "output/loan_batch"
-models_dir = "models"
-os.makedirs(models_dir, exist_ok=True)
+# Baca data batch CSV
+data1 = spark.read.csv(r"D:\SEMS-5\BIG DATA\Project2\project-kafka-spark-loan\output\loan_batch\batch_1_20241112150904.csv", header=True, inferSchema=True)
+data2 = spark.read.csv(r"D:\SEMS-5\BIG DATA\Project2\project-kafka-spark-loan\output\loan_batch\batch_2_20241112150929.csv", header=True, inferSchema=True)
+data3 = spark.read.csv(r"D:\SEMS-5\BIG DATA\Project2\project-kafka-spark-loan\output\loan_batch\batch_3_20241112150953.csv", header=True, inferSchema=True)
 
-# Fungsi untuk memuat data batch
-def load_data_batches():
-    batch_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".csv")]
-    dataframes = [spark.read.csv(batch_file, header=True, inferSchema=True) for batch_file in batch_files]
-    return dataframes
-
-# Fungsi untuk memeriksa dan membersihkan nama kolom
-def clean_column_names(df):
-    # Membersihkan nama kolom dengan menghapus spasi atau karakter tak terlihat
-    clean_columns = [col.strip() for col in df.columns]
-    return df.toDF(*clean_columns)
-
-# Fungsi untuk memeriksa kolom yang tersedia dalam data
-def check_columns(df):
-    print("Available Columns:", df.columns)
-    df.show(5)  # Tampilkan 5 baris pertama untuk memastikan data yang ada
-
-# Mendefinisikan kolom fitur dan kolom label
+# Kolom fitur dan kolom label
 feature_columns = ["loan_amount", "rate_of_interest", "Upfront_charges", "term", "property_value", "income", "Credit_Score", "dtir1"]
-label_column = "Status"  # Kolom target klasifikasi, sesuaikan dengan kolom target dalam dataset
+label_column = "Status"
 
-# Fungsi untuk melakukan pelatihan model
-def train_and_save_models():
-    data_batches = load_data_batches()
+# Inisialisasi assembler untuk menggabungkan kolom fitur
+assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
 
-    # Periksa dan bersihkan nama kolom di setiap batch data
-    clean_batches = [clean_column_names(batch) for batch in data_batches]
+# Gabungkan data sesuai dengan model yang akan dilatih
+datasets = [
+    ("Model1", data1),
+    ("Model2", data2),
+    ("Model3", data3),
+]
+
+# Buat directory untuk menyimpan model
+output_dir = "models"
+os.makedirs(output_dir, exist_ok=True)
+
+# Inisialisasi evaluator untuk mengukur akurasi
+evaluator = MulticlassClassificationEvaluator(labelCol=label_column, predictionCol="prediction", metricName="accuracy")
+
+# Training dan evaluasi untuk setiap model
+for model_name, dataset in datasets:
+    # Preprocessing pipeline
+    assembled_data = assembler.transform(dataset).select("features", label_column)
     
-    # Periksa kolom di setiap batch
-    for i, batch in enumerate(clean_batches):
-        print(f"Batch {i+1} - Kolom Data: {batch.columns}")
-        check_columns(batch)  # Tampilkan kolom dan beberapa baris pertama
+    # Split data menjadi training dan testing
+    train_data, test_data = assembled_data.randomSplit([0.8, 0.2], seed=42)
+    
+    # Inisialisasi RandomForestClassifier
+    rf_classifier = RandomForestClassifier(labelCol=label_column, featuresCol="features")
+    
+    # Train model
+    model = rf_classifier.fit(train_data)
+    
+    # Evaluasi model
+    predictions = model.transform(test_data)
+    accuracy = evaluator.evaluate(predictions)
+    print(f"{model_name} Accuracy: {accuracy}")
+    
+    # Simpan model
+    model_path = os.path.join(output_dir, model_name)
+    model.write().overwrite().save(model_path)
+    print(f"{model_name} saved at: {model_path}")
 
-    # Skema model: 1/3, 2/3, dan semua data
-    batch1 = clean_batches[0]
-    batch2 = clean_batches[1] if len(clean_batches) > 1 else None
-    batch3 = clean_batches[2] if len(clean_batches) > 2 else None
-
-    # Pipeline untuk klasifikasi
-    assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
-    classifier = RandomForestClassifier(featuresCol="features", labelCol=label_column)
-    pipeline = Pipeline(stages=[assembler, classifier])
-
-    # Model 1: 1/3 data pertama
-    model1 = pipeline.fit(batch1)
-    model1.write().overwrite().save(os.path.join(models_dir, "model1"))
-
-    # Model 2: 1/3 pertama + 1/3 kedua
-    if batch2:
-        batch2_data = batch1.union(batch2)
-        model2 = pipeline.fit(batch2_data)
-        model2.write().overwrite().save(os.path.join(models_dir, "model2"))
-
-    # Model 3: Semua data (1/3 pertama + 1/3 kedua + 1/3 ketiga)
-    if batch3:
-        all_data = batch1.union(batch2).union(batch3) if batch2 else batch1
-        model3 = pipeline.fit(all_data)
-        model3.write().overwrite().save(os.path.join(models_dir, "model3"))
-
-train_and_save_models()
+# Stop Spark session
 spark.stop()
