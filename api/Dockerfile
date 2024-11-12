@@ -1,20 +1,25 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+FROM openjdk:21-slim
 
-# Set the working directory in the container
+ENV SPARK_VERSION=3.5.3
+ENV HADOOP_VERSION=3.4.0
+
+# Install Python and dependencies
+COPY requirements.txt .
+RUN apt-get update && \
+    apt-get install -y curl python3 python3-pip && \
+    python3 --version \
+    pip3 install --upgrade pip && \
+    pip3 install -r requirements.txt --break-system-packages && \
+    pip3 install fastapi[standard] --break-system-packages
+
+# Working Directory
 WORKDIR /app
 
-# Copy the current directory contents into the container
+# Copy App files
 COPY . /app
 
-# Install necessary dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Expose port
+EXPOSE 8000
 
-# Expose the port the app runs on
-EXPOSE 5000
-
-# Define environment variables
-ENV PYTHONUNBUFFERED 1
-
-# Run app.py when the container launches
-CMD ["python", "app.py"]
+# Run the application
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -20,3 +20,16 @@ services:
       - '9092:9092'
     depends_on:
       - zookeeper
+
+  api:
+    build:
+      context: ./api
+    container_name: loan-api
+    environment:
+      - SPARK_VERSION=3.5.3
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./api:/app  # Mount api folder to container
+    depends_on:
+      - kafka
