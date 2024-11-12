@@ -1,0 +1,1 @@
+{"class":"org.apache.spark.ml.feature.VectorAssembler","timestamp":1731404904230,"sparkVersion":"3.5.3","uid":"VectorAssembler_e8ddd594b533","paramMap":{"outputCol":"features","inputCols":["Credit_Score","LTV","loan_amount"]},"defaultParamMap":{"outputCol":"VectorAssembler_e8ddd594b533__output","handleInvalid":"error"}}
