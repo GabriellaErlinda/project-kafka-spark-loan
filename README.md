@@ -1,5 +1,12 @@
 # project-kafka-spark-loan
 
+| Nama Lengkap                  | NRP           |
+| :---------------------------: | :-----------: |
+| Monika Damelia                | 5027221011    |
+| Gabriella Erlinda Wijaya      | 5027221018    |
+| Steven Figo                   | 5027221021    |
+
+
 1. start docker
 ```sh
 docker-compose up -d

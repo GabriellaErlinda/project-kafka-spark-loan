@@ -3,6 +3,7 @@ import time
 import json
 import os
 
+# Kafka setup
 consumer = KafkaConsumer(
     'loan_topic',
     bootstrap_servers='localhost:9092',
@@ -11,35 +12,34 @@ consumer = KafkaConsumer(
     group_id='loan-consumer-group'
 )
 
-batch = []
-batch_size = 50    # Define batch size based on message count
-time_window = 30   # Define time window in seconds
-
-start_time = time.time()
-
-# Ensure the output directory exists
+# Directory for saving batches
 os.makedirs('../data/batches', exist_ok=True)
 
-for message in consumer:
-    try:
-        # Attempt to decode and parse JSON
-        decoded_message = message.value.decode('utf-8')
-        print("Received raw message:", decoded_message)  # Debugging line
-        json_message = json.loads(decoded_message)
-        batch.append(json_message)
+batch_count = 0
 
+for message in consumer:
+    # Decode the JSON message
+    decoded_message = message.value.decode('utf-8')
+    
+    # Load the JSON data
+    try:
+        batch_data = json.loads(decoded_message)
     except json.JSONDecodeError:
         print("Skipping message: not valid JSON format")
         continue
 
-    # Check if batch size or time window has been met
-    if len(batch) >= batch_size or (time.time() - start_time) >= time_window:
-        # Save the batch data
-        batch_filename = f'../data/batches/batch_{int(time.time())}.json'
-        with open(batch_filename, 'w') as f:
-            json.dump(batch, f, indent=4)
-        print(f"Batch saved to {batch_filename}")
+    # Save the batch data to a new file
+    batch_filename = f'../data/batches/batch_{batch_count + 1}.json'
+    with open(batch_filename, 'w') as f:
+        json.dump(batch_data, f, indent=4)
+    print(f"Batch {batch_count + 1} saved to {batch_filename}")
 
-        # Reset batch and timer
-        batch = []
-        start_time = time.time()
+    # Increment the batch count
+    batch_count += 1
+
+    # Print each message in the batch to simulate real-time streaming
+    for data in batch_data:
+        print(data)  # Display each record in the batch
+
+    # Add a small delay to simulate continuous processing
+    time.sleep(0.1)
