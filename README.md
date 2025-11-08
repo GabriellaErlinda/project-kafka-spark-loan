@@ -2,7 +2,7 @@
 
 | Nama Lengkap                  | NRP           |
 | :---------------------------: | :-----------: |
-| Monika Damelia                | 5027221011    |
+| Monika Damelia Hutapea        | 5027221011    |
 | Gabriella Erlinda Wijaya      | 5027221018    |
 | Steven Figo                   | 5027221021    |
 
